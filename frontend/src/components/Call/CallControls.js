@@ -12,14 +12,13 @@ import {
   WarningIcon,
   ViewIcon,
   ViewOffIcon,
-  MicrophoneIcon,
   InfoIcon,
   BellIcon,
 } from "@chakra-ui/icons";
 import { ChatState } from "../../Context/ChatProvider";
 
 // Custom icons for missing Chakra UI icons
-const MicrophoneIcon = (props) => (
+const CustomMicrophoneIcon = (props) => (
   <svg
     fill="currentColor"
     viewBox="0 0 24 24"
@@ -75,7 +74,7 @@ const CallControls = ({
           <IconButton
             colorScheme={isMuted ? "red" : "gray"}
             aria-label={isMuted ? "Unmute" : "Mute"}
-            icon={isMuted ? <MicOffIcon /> : <MicrophoneIcon />}
+            icon={isMuted ? <MicOffIcon /> : <CustomMicrophoneIcon />}
             borderRadius="full"
             onClick={toggleMute}
           />

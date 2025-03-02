@@ -6,6 +6,7 @@ import { useToast } from "@chakra-ui/toast";
 import axios from "axios";
 import { useState } from "react";
 import { useHistory } from "react-router";
+import { generateKeyPair, exportPublicKey } from "../../utils/encryption";
 
 const Signup = () => {
   const [show, setShow] = useState(false);
@@ -45,6 +46,16 @@ const Signup = () => {
     }
     console.log(name, email, password, pic);
     try {
+      // Generate encryption keys for the user
+      const keyPair = await generateKeyPair();
+      const publicKeyString = await exportPublicKey(keyPair);
+      
+      // Store private key in localStorage (in production, consider more secure options)
+      localStorage.setItem("privateKeyPair", JSON.stringify({
+        timestamp: Date.now(),
+        keyPair
+      }));
+      
       const config = {
         headers: {
           "Content-type": "application/json",
@@ -57,6 +68,7 @@ const Signup = () => {
           email,
           password,
           pic,
+          publicKey: publicKeyString,
         },
         config
       );
