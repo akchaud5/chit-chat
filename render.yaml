@@ -2,7 +2,7 @@ services:
   - type: web
     name: chit-chat
     env: node
-    buildCommand: yarn install && cd backend && yarn install && cd ../frontend && rm -f yarn.lock && yarn install && NODE_OPTIONS=--openssl-legacy-provider yarn build
+    buildCommand: yarn install && cd backend && yarn install && cd ../frontend && rm -f yarn.lock && yarn add @babel/core@~7.16.0 babel-preset-react-app@10.0.0 && yarn install && NODE_OPTIONS=--openssl-legacy-provider yarn build
     startCommand: cd backend && node server.js
     envVars:
       - key: NODE_ENV
