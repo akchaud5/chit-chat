@@ -2,7 +2,7 @@ services:
   - type: web
     name: chit-chat
     env: node
-    buildCommand: cd backend && yarn install && cd ../frontend && yarn install && yarn build
+    buildCommand: yarn install && cd backend && yarn install && cd ../frontend && yarn install && yarn build
     startCommand: cd backend && node server.js
     envVars:
       - key: NODE_ENV
