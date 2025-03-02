@@ -22,27 +22,37 @@ const allMessages = asyncHandler(async (req, res) => {
 //@route           POST /api/Message/
 //@access          Protected
 const sendMessage = asyncHandler(async (req, res) => {
-  const { content, chatId } = req.body;
+  const { content, chatId, isEncrypted, encryptedContent } = req.body;
 
-  if (!content || !chatId) {
+  if ((!content && !encryptedContent) || !chatId) {
     console.log("Invalid data passed into request");
     return res.sendStatus(400);
   }
 
-  var newMessage = {
+  let newMessage = {
     sender: req.user._id,
-    content: content,
     chat: chatId,
   };
 
-  try {
-    var message = await Message.create(newMessage);
+  // Set the appropriate content field
+  if (isEncrypted && encryptedContent) {
+    newMessage.isEncrypted = true;
+    newMessage.encryptedContent = encryptedContent;
+    // Set a placeholder for plain content to maintain compatibility
+    newMessage.content = "[Encrypted Message]";
+  } else {
+    newMessage.content = content;
+    newMessage.isEncrypted = false;
+  }
 
-    message = await message.populate("sender", "name pic").execPopulate();
-    message = await message.populate("chat").execPopulate();
+  try {
+    let message = await Message.create(newMessage);
+
+    message = await message.populate("sender", "name pic");
+    message = await message.populate("chat");
     message = await User.populate(message, {
       path: "chat.users",
-      select: "name pic email",
+      select: "name pic email publicKey",
     });
 
     await Chat.findByIdAndUpdate(req.body.chatId, { latestMessage: message });

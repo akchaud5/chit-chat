@@ -4,8 +4,10 @@ const dotenv = require("dotenv");
 const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const messageRoutes = require("./routes/messageRoutes");
+const callRoutes = require("./routes/callRoutes");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const path = require("path");
+const { encryptData, decryptData } = require("./config/encryption");
 
 dotenv.config();
 connectDB();
@@ -20,6 +22,7 @@ app.use(express.json()); // to accept json data
 app.use("/api/user", userRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/message", messageRoutes);
+app.use("/api/call", callRoutes);
 
 // --------------------------deployment------------------------------
 
@@ -81,6 +84,37 @@ io.on("connection", (socket) => {
       if (user._id == newMessageRecieved.sender._id) return;
 
       socket.in(user._id).emit("message recieved", newMessageRecieved);
+    });
+  });
+
+  // Call signaling events
+  socket.on("call:start", (callData) => {
+    const { recipients, encryptedSignal, callId } = callData;
+    
+    // Emit to all recipients
+    recipients.forEach((userId) => {
+      socket.in(userId).emit("call:incoming", callData);
+    });
+  });
+
+  socket.on("call:answer", (callData) => {
+    const { caller, encryptedSignal, callId } = callData;
+    socket.in(caller).emit("call:accepted", callData);
+  });
+
+  socket.on("call:ice-candidate", (iceData) => {
+    const { recipient, candidate, callId } = iceData;
+    socket.in(recipient).emit("call:ice-candidate", iceData);
+  });
+
+  socket.on("call:end", (callData) => {
+    const { participants, callId } = callData;
+    
+    // Notify all participants that call has ended
+    participants.forEach((userId) => {
+      if (socket.id !== userId) {
+        socket.in(userId).emit("call:ended", { callId });
+      }
     });
   });
 

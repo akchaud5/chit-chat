@@ -17,6 +17,7 @@ const userSchema = mongoose.Schema(
       required: true,
       default: false,
     },
+    publicKey: { type: "String" }, // For message encryption
   },
   { timestaps: true }
 );

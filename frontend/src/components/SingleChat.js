@@ -2,19 +2,29 @@ import { FormControl } from "@chakra-ui/form-control";
 import { Input } from "@chakra-ui/input";
 import { Box, Text } from "@chakra-ui/layout";
 import "./styles.css";
-import { IconButton, Spinner, useToast } from "@chakra-ui/react";
+import { IconButton, Spinner, useToast, HStack } from "@chakra-ui/react";
 import { getSender, getSenderFull } from "../config/ChatLogics";
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { ArrowBackIcon } from "@chakra-ui/icons";
+import { ArrowBackIcon, PhoneIcon } from "@chakra-ui/icons";
 import ProfileModal from "./miscellaneous/ProfileModal";
 import ScrollableChat from "./ScrollableChat";
 import Lottie from "react-lottie";
 import animationData from "../animations/typing.json";
+import CallModal from "./Call/CallModal";
 
 import io from "socket.io-client";
 import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import { ChatState } from "../Context/ChatProvider";
+import { 
+  encryptMessage, 
+  decryptMessage, 
+  generateMessageKey, 
+  exportSymmetricKey, 
+  importSymmetricKey,
+  encryptWithPublicKey 
+} from "../utils/encryption";
+
 const ENDPOINT = "http://localhost:5000"; // "https://talk-a-tive.herokuapp.com"; -> After deployment
 var socket, selectedChatCompare;
 
@@ -25,6 +35,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [socketConnected, setSocketConnected] = useState(false);
   const [typing, setTyping] = useState(false);
   const [istyping, setIsTyping] = useState(false);
+  const [isCallModalOpen, setIsCallModalOpen] = useState(false);
   const toast = useToast();
 
   const defaultOptions = {
@@ -35,8 +46,17 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       preserveAspectRatio: "xMidYMid slice",
     },
   };
-  const { selectedChat, setSelectedChat, user, notification, setNotification } =
-    ChatState();
+  const { 
+    selectedChat, 
+    setSelectedChat, 
+    user, 
+    notification, 
+    setNotification,
+    callType,
+    setCallType,
+    incomingCall,
+    setIncomingCall
+  } = ChatState();
 
   const fetchMessages = async () => {
     if (!selectedChat) return;
@@ -80,17 +100,46 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             Authorization: `Bearer ${user.token}`,
           },
         };
+        
+        const { keyPair, chatKeys } = ChatState();
         setNewMessage("");
-        const { data } = await axios.post(
-          "/api/message",
-          {
-            content: newMessage,
-            chatId: selectedChat,
-          },
-          config
-        );
-        socket.emit("new message", data);
-        setMessages([...messages, data]);
+        
+        // Check if we have encryption enabled for this chat
+        if (selectedChat.encryptionEnabled && chatKeys[selectedChat._id]) {
+          // Encrypt the message with the chat's symmetric key
+          const chatKey = chatKeys[selectedChat._id];
+          const encryptedContent = await encryptMessage(newMessage, chatKey);
+          
+          // Send encrypted message
+          const { data } = await axios.post(
+            "/api/message",
+            {
+              chatId: selectedChat,
+              isEncrypted: true,
+              encryptedContent: encryptedContent
+            },
+            config
+          );
+          
+          // Store the original message locally for display
+          data.originalContent = newMessage;
+          
+          socket.emit("new message", data);
+          setMessages([...messages, data]);
+        } else {
+          // Send unencrypted message
+          const { data } = await axios.post(
+            "/api/message",
+            {
+              content: newMessage,
+              chatId: selectedChat,
+              isEncrypted: false
+            },
+            config
+          );
+          socket.emit("new message", data);
+          setMessages([...messages, data]);
+        }
       } catch (error) {
         toast({
           title: "Error Occured!",
@@ -110,16 +159,88 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     socket.on("connected", () => setSocketConnected(true));
     socket.on("typing", () => setIsTyping(true));
     socket.on("stop typing", () => setIsTyping(false));
+    
+    // Listen for incoming calls
+    socket.on("call:incoming", (callData) => {
+      if (callData.recipients.includes(user._id)) {
+        setIncomingCall(callData);
+        setIsCallModalOpen(true);
+      }
+    });
 
     // eslint-disable-next-line
   }, []);
 
   useEffect(() => {
     fetchMessages();
+    
+    // Setup encryption for this chat if not already done
+    if (selectedChat && selectedChat.encryptionEnabled) {
+      setupChatEncryption();
+    }
 
     selectedChatCompare = selectedChat;
     // eslint-disable-next-line
   }, [selectedChat]);
+  
+  // Set up encryption for a chat
+  const setupChatEncryption = async () => {
+    const { keyPair, chatKeys, setChatKeys } = ChatState();
+    
+    // Skip if we don't have a key pair or already have a key for this chat
+    if (!keyPair || chatKeys[selectedChat._id]) {
+      return;
+    }
+    
+    try {
+      // For one-on-one chats, set up encryption
+      if (!selectedChat.isGroupChat) {
+        // Find the other user
+        const otherUser = selectedChat.users.find(u => u._id !== user._id);
+        
+        // Check if the other user has a public key
+        if (otherUser.publicKey) {
+          // Generate a new symmetric key for this chat
+          const chatKey = await generateMessageKey();
+          
+          // Store the chat key in our local state
+          const newChatKeys = { ...chatKeys };
+          newChatKeys[selectedChat._id] = chatKey;
+          setChatKeys(newChatKeys);
+          
+          // Save chat keys to local storage
+          localStorage.setItem("chatKeys", JSON.stringify(newChatKeys));
+          
+          // Encrypt the symmetric key with the recipient's public key
+          const encryptedKey = await encryptWithPublicKey(
+            await exportSymmetricKey(chatKey), 
+            otherUser.publicKey
+          );
+          
+          // Store the encrypted key on the server for this chat
+          const config = {
+            headers: {
+              "Content-type": "application/json",
+              Authorization: `Bearer ${user.token}`,
+            },
+          };
+          
+          await axios.put(
+            "/api/chat/encryptedkey",
+            {
+              chatId: selectedChat._id,
+              encryptedKey,
+            },
+            config
+          );
+        }
+      }
+      // For group chats, the process would be more complex
+      // We'd need to encrypt the symmetric key for each group member
+    } catch (error) {
+      console.error("Error setting up chat encryption:", error);
+    }
+  };
 
   useEffect(() => {
     socket.on("message recieved", (newMessageRecieved) => {
@@ -158,6 +279,12 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     }, timerLength);
   };
 
+  // Initiate a call
+  const initiateCall = (type) => {
+    setCallType(type);
+    setIsCallModalOpen(true);
+  };
+
   return (
     <>
       {selectedChat ? (
@@ -180,7 +307,25 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             {messages &&
               (!selectedChat.isGroupChat ? (
                 <>
-                  {getSender(user, selectedChat.users)}
+                  <Box>
+                    {getSender(user, selectedChat.users)}
+                    <HStack spacing={2} mt={1}>
+                      <IconButton
+                        size="sm"
+                        colorScheme="blue"
+                        icon={<PhoneIcon />}
+                        onClick={() => initiateCall("audio")}
+                        aria-label="Audio Call"
+                      />
+                      <IconButton
+                        size="sm"
+                        colorScheme="teal"
+                        icon={<PhoneIcon />}
+                        onClick={() => initiateCall("video")}
+                        aria-label="Video Call"
+                      />
+                    </HStack>
+                  </Box>
                   <ProfileModal
                     user={getSenderFull(user, selectedChat.users)}
                   />
@@ -257,6 +402,14 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           </Text>
         </Box>
       )}
+      
+      {/* Call Modal */}
+      <CallModal 
+        isOpen={isCallModalOpen}
+        onClose={() => setIsCallModalOpen(false)}
+        call={incomingCall}
+        isIncoming={!!incomingCall}
+      />
     </>
   );
 };

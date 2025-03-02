@@ -17,7 +17,7 @@ import {
   DrawerOverlay,
 } from "@chakra-ui/modal";
 import { Tooltip } from "@chakra-ui/tooltip";
-import { BellIcon, ChevronDownIcon } from "@chakra-ui/icons";
+import { BellIcon, ChevronDownIcon, PhoneIcon } from "@chakra-ui/icons";
 import { Avatar } from "@chakra-ui/avatar";
 import { useHistory } from "react-router-dom";
 import { useState } from "react";
@@ -31,12 +31,14 @@ import { Effect } from "react-notification-badge";
 import { getSender } from "../../config/ChatLogics";
 import UserListItem from "../userAvatar/UserListItem";
 import { ChatState } from "../../Context/ChatProvider";
+import CallHistory from "../Call/CallHistory";
 
 function SideDrawer() {
   const [search, setSearch] = useState("");
   const [searchResult, setSearchResult] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingChat, setLoadingChat] = useState(false);
+  const [viewCallHistory, setViewCallHistory] = useState(false);
 
   const {
     setSelectedChat,
@@ -142,9 +144,16 @@ function SideDrawer() {
           </Button>
         </Tooltip>
         <Text fontSize="2xl" fontFamily="Work sans">
-          Talk-A-Tive
+          Chit Chat
         </Text>
         <div>
+          <Menu>
+            <Tooltip label="Call History" hasArrow placement="bottom">
+              <Button variant="ghost" mr={2} onClick={() => setViewCallHistory(true)}>
+                <PhoneIcon fontSize="xl" />
+              </Button>
+            </Tooltip>
+          </Menu>
           <Menu>
             <MenuButton p={1}>
               <NotificationBadge
@@ -190,6 +199,7 @@ function SideDrawer() {
         </div>
       </Box>
 
+      {/* Search Users Drawer */}
       <Drawer placement="left" onClose={onClose} isOpen={isOpen}>
         <DrawerOverlay />
         <DrawerContent>
@@ -216,6 +226,17 @@ function SideDrawer() {
               ))
             )}
             {loadingChat && <Spinner ml="auto" d="flex" />}
+          </DrawerBody>
+        </DrawerContent>
+      </Drawer>
+      
+      {/* Call History Drawer */}
+      <Drawer placement="right" onClose={() => setViewCallHistory(false)} isOpen={viewCallHistory}>
+        <DrawerOverlay />
+        <DrawerContent>
+          <DrawerHeader borderBottomWidth="1px">Call History</DrawerHeader>
+          <DrawerBody p={0}>
+            <CallHistory />
           </DrawerBody>
         </DrawerContent>
       </Drawer>

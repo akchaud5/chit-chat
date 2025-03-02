@@ -6,7 +6,7 @@ const User = require("../models/userModel");
 //@route           POST /api/chat/
 //@access          Protected
 const accessChat = asyncHandler(async (req, res) => {
-  const { userId } = req.body;
+  const { userId, encryptedKey } = req.body;
 
   if (!userId) {
     console.log("UserId param not sent with request");
@@ -25,17 +25,37 @@ const accessChat = asyncHandler(async (req, res) => {
 
   isChat = await User.populate(isChat, {
     path: "latestMessage.sender",
-    select: "name pic email",
+    select: "name pic email publicKey",
   });
 
   if (isChat.length > 0) {
+    // If chat exists and encryptedKey is provided, update the key
+    if (encryptedKey && isChat[0].encryptionEnabled) {
+      // Initialize encryptedKeys Map if it doesn't exist
+      if (!isChat[0].encryptedKeys) {
+        isChat[0].encryptedKeys = new Map();
+      }
+      
+      // Store the encrypted key for this user
+      isChat[0].encryptedKeys.set(req.user._id.toString(), encryptedKey);
+      await isChat[0].save();
+    }
+    
     res.send(isChat[0]);
   } else {
+    // Create new chat with encryption
     var chatData = {
       chatName: "sender",
       isGroupChat: false,
       users: [req.user._id, userId],
+      encryptionEnabled: true,
     };
+    
+    // Set up encryption keys if provided
+    if (encryptedKey) {
+      chatData.encryptedKeys = new Map();
+      chatData.encryptedKeys.set(req.user._id.toString(), encryptedKey);
+    }
 
     try {
       const createdChat = await Chat.create(chatData);
@@ -193,6 +213,45 @@ const addToGroup = asyncHandler(async (req, res) => {
   }
 });
 
+// @desc    Store encrypted key for chat
+// @route   PUT /api/chat/encryptedkey
+// @access  Protected
+const storeEncryptedKey = asyncHandler(async (req, res) => {
+  const { chatId, encryptedKey } = req.body;
+
+  if (!chatId || !encryptedKey) {
+    res.status(400);
+    throw new Error("Please provide chatId and encryptedKey");
+  }
+
+  try {
+    const chat = await Chat.findById(chatId);
+    
+    if (!chat) {
+      res.status(404);
+      throw new Error("Chat not found");
+    }
+
+    // Initialize encryptedKeys Map if it doesn't exist
+    if (!chat.encryptedKeys) {
+      chat.encryptedKeys = new Map();
+    }
+    
+    // Store the encrypted key for this user
+    chat.encryptedKeys.set(req.user._id.toString(), encryptedKey);
+    await chat.save();
+    
+    const updatedChat = await Chat.findById(chatId)
+      .populate("users", "-password")
+      .populate("groupAdmin", "-password");
+      
+    res.json(updatedChat);
+  } catch (error) {
+    res.status(400);
+    throw new Error(error.message);
+  }
+});
+
 module.exports = {
   accessChat,
   fetchChats,
@@ -200,4 +259,5 @@ module.exports = {
   renameGroup,
   addToGroup,
   removeFromGroup,
+  storeEncryptedKey,
 };

@@ -10,6 +10,12 @@ const chatModel = mongoose.Schema(
       ref: "Message",
     },
     groupAdmin: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    // Fields for encryption
+    encryptionEnabled: { type: Boolean, default: true },
+    encryptedKeys: {
+      type: Map,
+      of: String, // Stores user ID -> encrypted symmetric key
+    }
   },
   { timestamps: true }
 );

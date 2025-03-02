@@ -23,11 +23,11 @@ const allUsers = asyncHandler(async (req, res) => {
 //@route           POST /api/user/
 //@access          Public
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, pic } = req.body;
+  const { name, email, password, pic, publicKey } = req.body;
 
   if (!name || !email || !password) {
     res.status(400);
-    throw new Error("Please Enter all the Feilds");
+    throw new Error("Please Enter all the Fields");
   }
 
   const userExists = await User.findOne({ email });
@@ -42,6 +42,7 @@ const registerUser = asyncHandler(async (req, res) => {
     email,
     password,
     pic,
+    publicKey, // Store user's public key for encryption
   });
 
   if (user) {
@@ -51,6 +52,7 @@ const registerUser = asyncHandler(async (req, res) => {
       email: user.email,
       isAdmin: user.isAdmin,
       pic: user.pic,
+      publicKey: user.publicKey,
       token: generateToken(user._id),
     });
   } else {
@@ -74,6 +76,7 @@ const authUser = asyncHandler(async (req, res) => {
       email: user.email,
       isAdmin: user.isAdmin,
       pic: user.pic,
+      publicKey: user.publicKey,
       token: generateToken(user._id),
     });
   } else {
@@ -82,4 +85,36 @@ const authUser = asyncHandler(async (req, res) => {
   }
 });
 
-module.exports = { allUsers, registerUser, authUser };
+// @description     Update user's public key
+// @route           PUT /api/user/publickey/:userId
+// @access          Protected
+const updatePublicKey = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { publicKey } = req.body;
+
+  if (!publicKey) {
+    res.status(400);
+    throw new Error("Public key is required");
+  }
+
+  // Ensure user can only update their own key
+  if (userId !== req.user._id.toString()) {
+    res.status(401);
+    throw new Error("Not authorized to update this user's key");
+  }
+
+  const updatedUser = await User.findByIdAndUpdate(
+    userId,
+    { publicKey },
+    { new: true }
+  ).select("-password");
+
+  if (updatedUser) {
+    res.json(updatedUser);
+  } else {
+    res.status(404);
+    throw new Error("User not found");
+  }
+});
+
+module.exports = { allUsers, registerUser, authUser, updatePublicKey };
